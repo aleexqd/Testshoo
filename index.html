@@ -1,178 +1,266 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>CS3 Stable FPS</title>
+<meta charset="UTF-8" />
+<title>CS3 FPS Trainer</title>
 
 <style>
-body { margin:0; overflow:hidden; background:black; font-family:Arial; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: black;
+    font-family: Arial;
+  }
 
-video {
-  position:absolute;
-  width:100vw;
-  height:100vh;
-  object-fit:cover;
-  opacity:0.12;
-  transform:scaleX(-1);
-}
+  video {
+    position: absolute;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    opacity: 0.12;
+    transform: scaleX(-1);
+  }
 
-canvas {
-  position:absolute;
-  top:0;
-  left:0;
-}
+  canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
 
-#hud {
-  position:absolute;
-  top:10px;
-  left:10px;
-  color:white;
-}
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    font-size: 16px;
+    z-index: 10;
+  }
 
-#hp {
-  position:absolute;
-  bottom:20px;
-  left:20px;
-  width:200px;
-  height:15px;
-  border:1px solid white;
-}
+  /* HP BAR */
+  #hpContainer {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    width: 180px;
+    height: 18px;
+    border: 1px solid white;
+  }
 
-#hpBar {
-  width:100%;
-  height:100%;
-  background:lime;
-}
+  #hpBar {
+    width: 100%;
+    height: 100%;
+    background: lime;
+  }
 
-#start {
-  position:absolute;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  padding:12px 18px;
-}
+  /* RELOAD BUTTON */
+  #reload {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    font-size: 28px;
+    color: white;
+    border: 1px solid white;
+    padding: 5px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  /* AMMO */
+  #ammo {
+    position: absolute;
+    bottom: 20px;
+    right: 80px;
+    color: white;
+    font-size: 18px;
+  }
+
+  #startBtn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    padding: 14px 22px;
+    background: white;
+    border: none;
+    cursor: pointer;
+    z-index: 20;
+  }
 </style>
 </head>
 
 <body>
 
 <div id="hud">Score: 0</div>
-<div id="hp"><div id="hpBar"></div></div>
-<button id="start">START</button>
+<div id="ammo">30 / 30</div>
+<div id="reload">R</div>
+
+<div id="hpContainer"><div id="hpBar"></div></div>
+
+<button id="startBtn">START</button>
 
 <video id="video" autoplay playsinline></video>
-<canvas id="c"></canvas>
+<canvas id="game"></canvas>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
-const c = document.getElementById("c");
-const ctx = c.getContext("2d");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-c.width = innerWidth;
-c.height = innerHeight;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
 let score = 0;
 let hp = 100;
 
-// 👇 IMPORTANT: stabil player position
-let playerX = innerWidth/2;
+let ammo = 30;
+let maxAmmo = 30;
 
-let enemy = { x:200, y:150, cooldown:60 };
-let bullets = [];
+let cursor = { x: 0, y: 0 };
 
-// spawn enemy
-function spawn(){
-  enemy.x = Math.random()*innerWidth;
-  enemy.y = Math.random()*innerHeight*0.4;
-  enemy.cooldown = 60;
+let target = { x: 200, y: 200, r: 22 };
+
+function spawn() {
+  target.x = Math.random() * window.innerWidth;
+  target.y = Math.random() * window.innerHeight;
 }
+
 spawn();
 
-// simple shoot
-function shoot(){
-  bullets.push({ x:enemy.x, y:enemy.y, vx:(playerX-enemy.x)*0.01, vy:4 });
+// AUDIO
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function shootSound() {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+
+  o.frequency.value = 600;
+  o.type = "square";
+
+  o.start();
+  o.stop(audioCtx.currentTime + 0.05);
+}
+
+function reloadSound() {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+
+  o.frequency.value = 200;
+  o.type = "triangle";
+
+  o.start();
+  o.stop(audioCtx.currentTime + 0.2);
+}
+
+// RELOAD
+function reload() {
+  ammo = maxAmmo;
+  document.getElementById("ammo").innerText = ammo + " / " + maxAmmo;
+  reloadSound();
+}
+
+document.getElementById("reload").onclick = reload;
+
+// DAMAGE SYSTEM (enemy proximity)
+function damageCheck() {
+  const dx = cursor.x - target.x;
+  const dy = cursor.y - target.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+
+  if (dist < 80) {
+    hp -= 0.3; // gradual damage
+    if (hp < 0) hp = 0;
+  }
+
+  document.getElementById("hpBar").style.width = hp + "%";
 }
 
 // GAME LOOP
-function loop(){
-  ctx.clearRect(0,0,c.width,c.height);
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // enemy
-  ctx.fillStyle="cyan";
+  // TARGET (cyan)
+  ctx.fillStyle = "cyan";
   ctx.beginPath();
-  ctx.arc(enemy.x,enemy.y,20,0,Math.PI*2);
+  ctx.arc(target.x, target.y, target.r, 0, Math.PI*2);
   ctx.fill();
 
-  // player crosshair
-  ctx.strokeStyle="white";
+  // cursor
+  ctx.strokeStyle = "white";
   ctx.beginPath();
-  ctx.moveTo(playerX-10, innerHeight-50);
-  ctx.lineTo(playerX+10, innerHeight-50);
+  ctx.moveTo(cursor.x - 8, cursor.y);
+  ctx.lineTo(cursor.x + 8, cursor.y);
   ctx.stroke();
 
-  // bullets
-  ctx.fillStyle="red";
-  bullets.forEach(b=>{
-    b.x += b.vx;
-    b.y += b.vy;
+  ctx.beginPath();
+  ctx.moveTo(cursor.x, cursor.y - 8);
+  ctx.lineTo(cursor.x, cursor.y + 8);
+  ctx.stroke();
 
-    ctx.fillRect(b.x,b.y,3,3);
+  // HIT
+  const dx = cursor.x - target.x;
+  const dy = cursor.y - target.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
 
-    if(Math.abs(b.x-playerX)<20 && b.y>innerHeight-100){
-      hp -= 3;
-      if(hp<0) hp=0;
-    }
-  });
+  if (dist < target.r && ammo > 0) {
+    score++;
+    ammo--;
 
-  document.getElementById("hpBar").style.width = hp+"%";
+    document.getElementById("hud").innerText = "Score: " + score;
+    document.getElementById("ammo").innerText = ammo + " / " + maxAmmo;
 
-  enemy.cooldown--;
-  if(enemy.cooldown<=0){
-    shoot();
-    enemy.cooldown = 50;
+    shootSound();
+    spawn();
   }
 
-  requestAnimationFrame(loop);
-}
-loop();
+  damageCheck();
 
-// CAMERA (ONLY X MOVEMENT)
-const video = document.getElementById("video");
+  requestAnimationFrame(draw);
+}
+
+draw();
+
+// MEDIA PIPE
+const videoElement = document.getElementById("video");
 
 const hands = new Hands({
-  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  locateFile: (file) =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
 });
 
 hands.setOptions({
-  maxNumHands:1,
-  minDetectionConfidence:0.7,
-  minTrackingConfidence:0.7
+  maxNumHands: 1,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7,
 });
 
-hands.onResults(res=>{
-  if(res.multiHandLandmarks?.length){
-    const hand = res.multiHandLandmarks[0];
+hands.onResults((results) => {
+  if (results.multiHandLandmarks?.length > 0) {
+    const hand = results.multiHandLandmarks[0];
     const tip = hand[8];
 
-    // smooth + stable movement ONLY X
-    playerX = (1 - tip.x) * innerWidth;
+    cursor.x = (1 - tip.x) * window.innerWidth;
+    cursor.y = tip.y * window.innerHeight;
   }
 });
 
-const cam = new Camera(video,{
-  onFrame: async ()=>{
-    await hands.send({image:video});
+const camera = new Camera(videoElement, {
+  onFrame: async () => {
+    await hands.send({ image: videoElement });
   },
-  width:640,
-  height:480
+  width: 640,
+  height: 480,
 });
 
-// start
-document.getElementById("start").onclick = async ()=>{
-  document.getElementById("start").style.display="none";
-  await cam.start();
+// START
+document.getElementById("startBtn").onclick = async () => {
+  document.getElementById("startBtn").style.display = "none";
+  await camera.start();
+  audioCtx.resume();
 };
 </script>
 
