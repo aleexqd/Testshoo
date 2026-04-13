@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<title>Contor Metanii</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<style>
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #111;
+  color: white;
+}
+
+button {
+  padding: 15px;
+  font-size: 18px;
+  margin: 20px;
+}
+
+#counter {
+  font-size: 50px;
+  margin-top: 20px;
+}
+
+video, canvas {
+  width: 90%;
+  max-width: 400px;
+  border-radius: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Contor Metanii</h1>
+
+<button onclick="start()">Start</button>
+
+<div id="counter">0</div>
+
+<video id="video" playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script>
+let counter = 0;
+let state = 0;
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function updateCounter() {
+  document.getElementById("counter").innerText = counter;
+}
+
+function onMetanie() {
+  counter++;
+  updateCounter();
+  console.log("Metanie:", counter);
+}
+
+function start() {
+
+  const pose = new Pose({
+    locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    }
+  });
+
+  pose.setOptions({
+    modelComplexity: 0,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+
+  pose.onResults(results => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+    if (!results.poseLandmarks) return;
+
+    const lm = results.poseLandmarks;
+
+    const headY = lm[0].y;
+    const shoulderY = lm[11].y;
+    const hipY = lm[23].y;
+
+    // LOGICĂ METANII (4 FAZE)
+    if (state === 0 && headY > shoulderY + 0.05) {
+      state = 1;
+    }
+
+    if (state === 1 && headY > hipY + 0.1) {
+      state = 2;
+    }
+
+    if (state === 2 && headY < hipY) {
+      state = 3;
+    }
+
+    if (state === 3 && headY < shoulderY + 0.02) {
+      state = 0;
+      onMetanie();
+    }
+
+    // desen schelet (opțional)
+    drawConnectors(ctx, lm, POSE_CONNECTIONS, {color: '#0f0'});
+    drawLandmarks(ctx, lm, {color: '#f00', radius: 3});
+  });
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await pose.send({image: video});
+    },
+    width: 640,
+    height: 480
+  });
+
+  camera.start();
+}
+</script>
+
+</body>
+</html>
