@@ -1,214 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="ro">
 <head>
-<meta charset="UTF-8" />
-<title>CS3 Aim Trainer</title>
+<meta charset="UTF-8">
+<title>Contor Metanii</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: black;
-    font-family: Arial;
-  }
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #111;
+  color: white;
+}
 
-  video {
-    position: absolute;
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-    opacity: 0.12;
-    transform: scaleX(-1);
-  }
+button {
+  padding: 15px;
+  font-size: 18px;
+  margin: 20px;
+}
 
-  canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-  }
+#counter {
+  font-size: 50px;
+  margin-top: 20px;
+}
 
-  #hud {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    color: white;
-    font-size: 18px;
-    z-index: 10;
-  }
-
-  #startBtn {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%,-50%);
-    padding: 14px 22px;
-    background: white;
-    border: none;
-    cursor: pointer;
-    z-index: 20;
-  }
+video, canvas {
+  width: 90%;
+  max-width: 400px;
+  border-radius: 10px;
+}
 </style>
 </head>
 
 <body>
 
-<div id="hud">Score: 0</div>
-<button id="startBtn">START</button>
+<h1>Contor Metanii</h1>
 
-<video id="video" autoplay playsinline></video>
-<canvas id="game"></canvas>
+<button onclick="start()">Start</button>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<div id="counter">0</div>
+
+<video id="video" playsinline></video>
+<canvas id="canvas"></canvas>
 
 <script>
-const canvas = document.getElementById("game");
+let counter = 0;
+let state = 0;
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
-
-let score = 0;
-
-let cursor = { x: 0, y: 0 };
-
-let target = {
-  x: 200,
-  y: 200,
-  r: 84
-};
-
-function spawn() {
-  target.x = Math.random() * window.innerWidth;
-  target.y = Math.random() * window.innerHeight;
+function updateCounter() {
+  document.getElementById("counter").innerText = counter;
 }
 
-spawn();
-
-// AUDIO (simple)
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-function shootSound() {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-
-  o.connect(g);
-  g.connect(audioCtx.destination);
-
-  o.frequency.value = 700;
-  o.type = "square";
-
-  o.start();
-  o.stop(audioCtx.currentTime + 0.05);
+function onMetanie() {
+  counter++;
+  updateCounter();
+  console.log("Metanie:", counter);
 }
 
-function spawnSound() {
-  const o = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
+function start() {
 
-  o.connect(g);
-  g.connect(audioCtx.destination);
+  const pose = new Pose({
+    locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    }
+  });
 
-  o.frequency.value = 120;
-  o.type = "sawtooth";
+  pose.setOptions({
+    modelComplexity: 0,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
 
-  o.start();
-  o.stop(audioCtx.currentTime + 0.12);
+  pose.onResults(results => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+    if (!results.poseLandmarks) return;
+
+    const lm = results.poseLandmarks;
+
+    const headY = lm[0].y;
+    const shoulderY = lm[11].y;
+    const hipY = lm[23].y;
+
+    // LOGICĂ METANII (4 FAZE)
+    if (state === 0 && headY > shoulderY + 0.05) {
+      state = 1;
+    }
+
+    if (state === 1 && headY > hipY + 0.1) {
+      state = 2;
+    }
+
+    if (state === 2 && headY < hipY) {
+      state = 3;
+    }
+
+    if (state === 3 && headY < shoulderY + 0.02) {
+      state = 0;
+      onMetanie();
+    }
+
+    // desen schelet (opțional)
+    drawConnectors(ctx, lm, POSE_CONNECTIONS, {color: '#0f0'});
+    drawLandmarks(ctx, lm, {color: '#f00', radius: 3});
+  });
+
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await pose.send({image: video});
+    },
+    width: 640,
+    height: 480
+  });
+
+  camera.start();
 }
-
-spawnSound();
-
-function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // 🎯 CYAN TARGET (ONLY TARGET IS CYAN)
-  ctx.fillStyle = "cyan";
-  ctx.beginPath();
-  ctx.arc(target.x, target.y, target.r, 0, Math.PI*2);
-  ctx.fill();
-
-  // cross inside target
-  ctx.strokeStyle = "black";
-  ctx.beginPath();
-  ctx.moveTo(target.x - 8, target.y);
-  ctx.lineTo(target.x + 8, target.y);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(target.x, target.y - 8);
-  ctx.lineTo(target.x, target.y + 8);
-  ctx.stroke();
-
-  // cursor (white small crosshair)
-  ctx.strokeStyle = "white";
-  ctx.beginPath();
-  ctx.moveTo(cursor.x - 8, cursor.y);
-  ctx.lineTo(cursor.x + 8, cursor.y);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(cursor.x, cursor.y - 8);
-  ctx.lineTo(cursor.x, cursor.y + 8);
-  ctx.stroke();
-
-  // hit detection
-  const dx = cursor.x - target.x;
-  const dy = cursor.y - target.y;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-
-  if (dist < target.r) {
-    score++;
-    document.getElementById("hud").innerText = "Score: " + score;
-
-    shootSound();
-    spawn();
-    spawnSound();
-  }
-
-  requestAnimationFrame(draw);
-}
-
-draw();
-
-// MEDIA PIPE HAND TRACKING
-const videoElement = document.getElementById("video");
-
-const hands = new Hands({
-  locateFile: (file) =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-});
-
-hands.setOptions({
-  maxNumHands: 1,
-  modelComplexity: 1,
-  minDetectionConfidence: 0.7,
-  minTrackingConfidence: 0.7,
-});
-
-hands.onResults((results) => {
-  if (results.multiHandLandmarks?.length > 0) {
-    const hand = results.multiHandLandmarks[0];
-    const tip = hand[8]; // index finger
-
-    cursor.x = (1 - tip.x) * window.innerWidth;
-    cursor.y = tip.y * window.innerHeight;
-  }
-});
-
-const camera = new Camera(videoElement, {
-  onFrame: async () => {
-    await hands.send({ image: videoElement });
-  },
-  width: 640,
-  height: 480,
-});
-
-// start
-document.getElementById("startBtn").onclick = async () => {
-  document.getElementById("startBtn").style.display = "none";
-  await camera.start();
-  audioCtx.resume();
-};
 </script>
 
 </body>
