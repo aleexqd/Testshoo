@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8" />
-<title>CS3 FPS Trainer</title>
+<title>CS3 Aim Trainer</title>
 
 <style>
   body {
@@ -32,46 +32,8 @@
     top: 10px;
     left: 10px;
     color: white;
-    font-size: 16px;
-    z-index: 10;
-  }
-
-  /* HP BAR */
-  #hpContainer {
-    position: absolute;
-    bottom: 20px;
-    left: 20px;
-    width: 180px;
-    height: 18px;
-    border: 1px solid white;
-  }
-
-  #hpBar {
-    width: 100%;
-    height: 100%;
-    background: lime;
-  }
-
-  /* RELOAD BUTTON */
-  #reload {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    font-size: 28px;
-    color: white;
-    border: 1px solid white;
-    padding: 5px 14px;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  /* AMMO */
-  #ammo {
-    position: absolute;
-    bottom: 20px;
-    right: 80px;
-    color: white;
     font-size: 18px;
+    z-index: 10;
   }
 
   #startBtn {
@@ -91,11 +53,6 @@
 <body>
 
 <div id="hud">Score: 0</div>
-<div id="ammo">30 / 30</div>
-<div id="reload">R</div>
-
-<div id="hpContainer"><div id="hpBar"></div></div>
-
 <button id="startBtn">START</button>
 
 <video id="video" autoplay playsinline></video>
@@ -112,14 +69,14 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let score = 0;
-let hp = 100;
-
-let ammo = 30;
-let maxAmmo = 30;
 
 let cursor = { x: 0, y: 0 };
 
-let target = { x: 200, y: 200, r: 22 };
+let target = {
+  x: 200,
+  y: 200,
+  r: 22
+};
 
 function spawn() {
   target.x = Math.random() * window.innerWidth;
@@ -128,67 +85,61 @@ function spawn() {
 
 spawn();
 
-// AUDIO
+// AUDIO (simple)
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function shootSound() {
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  o.connect(g); g.connect(audioCtx.destination);
 
-  o.frequency.value = 600;
+  o.connect(g);
+  g.connect(audioCtx.destination);
+
+  o.frequency.value = 700;
   o.type = "square";
 
   o.start();
   o.stop(audioCtx.currentTime + 0.05);
 }
 
-function reloadSound() {
+function spawnSound() {
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  o.connect(g); g.connect(audioCtx.destination);
 
-  o.frequency.value = 200;
-  o.type = "triangle";
+  o.connect(g);
+  g.connect(audioCtx.destination);
+
+  o.frequency.value = 120;
+  o.type = "sawtooth";
 
   o.start();
-  o.stop(audioCtx.currentTime + 0.2);
+  o.stop(audioCtx.currentTime + 0.12);
 }
 
-// RELOAD
-function reload() {
-  ammo = maxAmmo;
-  document.getElementById("ammo").innerText = ammo + " / " + maxAmmo;
-  reloadSound();
-}
+spawnSound();
 
-document.getElementById("reload").onclick = reload;
-
-// DAMAGE SYSTEM (enemy proximity)
-function damageCheck() {
-  const dx = cursor.x - target.x;
-  const dy = cursor.y - target.y;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-
-  if (dist < 80) {
-    hp -= 0.3; // gradual damage
-    if (hp < 0) hp = 0;
-  }
-
-  document.getElementById("hpBar").style.width = hp + "%";
-}
-
-// GAME LOOP
 function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // TARGET (cyan)
+  // 🎯 CYAN TARGET (ONLY TARGET IS CYAN)
   ctx.fillStyle = "cyan";
   ctx.beginPath();
   ctx.arc(target.x, target.y, target.r, 0, Math.PI*2);
   ctx.fill();
 
-  // cursor
+  // cross inside target
+  ctx.strokeStyle = "black";
+  ctx.beginPath();
+  ctx.moveTo(target.x - 8, target.y);
+  ctx.lineTo(target.x + 8, target.y);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(target.x, target.y - 8);
+  ctx.lineTo(target.x, target.y + 8);
+  ctx.stroke();
+
+  // cursor (white small crosshair)
   ctx.strokeStyle = "white";
   ctx.beginPath();
   ctx.moveTo(cursor.x - 8, cursor.y);
@@ -200,30 +151,26 @@ function draw() {
   ctx.lineTo(cursor.x, cursor.y + 8);
   ctx.stroke();
 
-  // HIT
+  // hit detection
   const dx = cursor.x - target.x;
   const dy = cursor.y - target.y;
   const dist = Math.sqrt(dx*dx + dy*dy);
 
-  if (dist < target.r && ammo > 0) {
+  if (dist < target.r) {
     score++;
-    ammo--;
-
     document.getElementById("hud").innerText = "Score: " + score;
-    document.getElementById("ammo").innerText = ammo + " / " + maxAmmo;
 
     shootSound();
     spawn();
+    spawnSound();
   }
-
-  damageCheck();
 
   requestAnimationFrame(draw);
 }
 
 draw();
 
-// MEDIA PIPE
+// MEDIA PIPE HAND TRACKING
 const videoElement = document.getElementById("video");
 
 const hands = new Hands({
@@ -241,7 +188,7 @@ hands.setOptions({
 hands.onResults((results) => {
   if (results.multiHandLandmarks?.length > 0) {
     const hand = results.multiHandLandmarks[0];
-    const tip = hand[8];
+    const tip = hand[8]; // index finger
 
     cursor.x = (1 - tip.x) * window.innerWidth;
     cursor.y = tip.y * window.innerHeight;
@@ -256,7 +203,7 @@ const camera = new Camera(videoElement, {
   height: 480,
 });
 
-// START
+// start
 document.getElementById("startBtn").onclick = async () => {
   document.getElementById("startBtn").style.display = "none";
   await camera.start();
