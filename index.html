@@ -1,24 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8" />
-<title>CS3 v4 FPS AI Trainer</title>
+<meta charset="UTF-8">
+<title>CS3 Stable FPS</title>
 
 <style>
-body {
-  margin:0;
-  overflow:hidden;
-  background:black;
-  font-family: Arial;
-}
+body { margin:0; overflow:hidden; background:black; font-family:Arial; }
 
 video {
   position:absolute;
   width:100vw;
   height:100vh;
   object-fit:cover;
-  opacity:0.10;
-  transform: scaleX(-1);
+  opacity:0.12;
+  transform:scaleX(-1);
 }
 
 canvas {
@@ -32,15 +27,14 @@ canvas {
   top:10px;
   left:10px;
   color:white;
-  font-size:16px;
 }
 
 #hp {
   position:absolute;
   bottom:20px;
   left:20px;
-  width:180px;
-  height:18px;
+  width:200px;
+  height:15px;
   border:1px solid white;
 }
 
@@ -55,17 +49,14 @@ canvas {
   top:50%;
   left:50%;
   transform:translate(-50%,-50%);
-  padding:15px 20px;
-  background:white;
-  border:none;
-  cursor:pointer;
+  padding:12px 18px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="hud">Score: 0 | Wave: 1</div>
+<div id="hud">Score: 0</div>
 <div id="hp"><div id="hpBar"></div></div>
 <button id="start">START</button>
 
@@ -83,128 +74,79 @@ c.width = innerWidth;
 c.height = innerHeight;
 
 let score = 0;
-let wave = 1;
 let hp = 100;
 
+// 👇 IMPORTANT: stabil player position
 let playerX = innerWidth/2;
 
-let enemy = {
-  x: 200,
-  y: 200,
-  r: 22,
-  shootCooldown: 0,
-  hp: 1
-};
-
+let enemy = { x:200, y:150, cooldown:60 };
 let bullets = [];
-let playerTrail = [];
-
-// AUDIO
-const audio = new (window.AudioContext || window.webkitAudioContext)();
-
-function beep(f,d){
-  const o = audio.createOscillator();
-  const g = audio.createGain();
-  o.connect(g); g.connect(audio.destination);
-  o.frequency.value=f;
-  o.type="square";
-  o.start();
-  o.stop(audio.currentTime + d/1000);
-}
 
 // spawn enemy
 function spawn(){
   enemy.x = Math.random()*innerWidth;
-  enemy.y = Math.random()*innerHeight*0.5;
-  enemy.hp = 1 + wave*0.2;
+  enemy.y = Math.random()*innerHeight*0.4;
+  enemy.cooldown = 60;
 }
-
-// bullet
-function shootBullet(fromX, fromY, toX, toY){
-  const angle = Math.atan2(toY-fromY,toX-fromX);
-  bullets.push({
-    x: fromX,
-    y: fromY,
-    vx: Math.cos(angle)*6,
-    vy: Math.sin(angle)*6
-  });
-  beep(150,50);
-}
-
-// wave system
-function nextWave(){
-  wave++;
-  spawn();
-  beep(80,200);
-}
-
 spawn();
+
+// simple shoot
+function shoot(){
+  bullets.push({ x:enemy.x, y:enemy.y, vx:(playerX-enemy.x)*0.01, vy:4 });
+}
 
 // GAME LOOP
 function loop(){
   ctx.clearRect(0,0,c.width,c.height);
 
-  // PLAYER POSITION (camera dodge simulation)
-  const centerX = innerWidth/2;
-  const dodge = playerX - centerX;
-
-  // enemy render
+  // enemy
   ctx.fillStyle="cyan";
   ctx.beginPath();
-  ctx.arc(enemy.x,enemy.y,enemy.r,0,Math.PI*2);
+  ctx.arc(enemy.x,enemy.y,20,0,Math.PI*2);
   ctx.fill();
 
-  // headshot zone
+  // player crosshair
   ctx.strokeStyle="white";
   ctx.beginPath();
-  ctx.arc(enemy.x,enemy.y,8,0,Math.PI*2);
+  ctx.moveTo(playerX-10, innerHeight-50);
+  ctx.lineTo(playerX+10, innerHeight-50);
   ctx.stroke();
 
   // bullets
   ctx.fillStyle="red";
   bullets.forEach(b=>{
-    b.x+=b.vx;
-    b.y+=b.vy;
+    b.x += b.vx;
+    b.y += b.vy;
 
     ctx.fillRect(b.x,b.y,3,3);
 
-    // hit player (based on X dodge)
-    if(Math.abs(b.x - playerX) < 20 && b.y > innerHeight*0.6){
-      hp -= 5;
+    if(Math.abs(b.x-playerX)<20 && b.y>innerHeight-100){
+      hp -= 3;
       if(hp<0) hp=0;
     }
   });
 
-  // enemy AI shooting
-  enemy.shootCooldown--;
-  if(enemy.shootCooldown<=0){
-    shootBullet(enemy.x, enemy.y, playerX, innerHeight);
-    enemy.shootCooldown = 40 - wave*2;
-  }
-
-  // DAMAGE DISPLAY
   document.getElementById("hpBar").style.width = hp+"%";
 
-  // wave difficulty
-  if(score > wave*5){
-    nextWave();
+  enemy.cooldown--;
+  if(enemy.cooldown<=0){
+    shoot();
+    enemy.cooldown = 50;
   }
 
   requestAnimationFrame(loop);
 }
-
 loop();
 
-// CAMERA TRACKING
+// CAMERA (ONLY X MOVEMENT)
 const video = document.getElementById("video");
 
 const hands = new Hands({
-  locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
 });
 
 hands.setOptions({
   maxNumHands:1,
-  modelComplexity:1,
   minDetectionConfidence:0.7,
   minTrackingConfidence:0.7
 });
@@ -214,7 +156,7 @@ hands.onResults(res=>{
     const hand = res.multiHandLandmarks[0];
     const tip = hand[8];
 
-    // PLAYER DODGE LEFT/RIGHT
+    // smooth + stable movement ONLY X
     playerX = (1 - tip.x) * innerWidth;
   }
 });
@@ -227,11 +169,10 @@ const cam = new Camera(video,{
   height:480
 });
 
-// START
+// start
 document.getElementById("start").onclick = async ()=>{
   document.getElementById("start").style.display="none";
   await cam.start();
-  audio.resume();
 };
 </script>
 
