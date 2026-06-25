@@ -2,131 +2,282 @@
 <html lang="ro">
 <head>
 <meta charset="UTF-8">
-<title>Contor Metanii</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<title>Timer ture alergare</title>
 
 <style>
+
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+.track-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+}
+
+.track-bg img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.55) contrast(1.1);
+}
+
 body {
-  font-family: Arial;
-  text-align: center;
-  background: #111;
-  color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: Arial, sans-serif;
+    color: #d7e7d7;
+    text-align: center;
+    background: #0a0505;
 }
 
-button {
-  padding: 15px;
-  font-size: 18px;
-  margin: 20px;
+.container{
+    width: 100%;
+    max-width: 700px;
+    padding: 30px 20px;
 }
 
-#counter {
-  font-size: 50px;
-  margin-top: 20px;
+.timer{
+    font-size: 64px;
+    font-weight: 600;
+    color: #7CFF6B;
+    text-shadow: 0 0 20px rgba(124,255,107,0.25);
 }
 
-video, canvas {
-  width: 90%;
-  max-width: 400px;
-  border-radius: 10px;
+.subtitle{
+    font-size: 20px;
+    color: #cfe3cf;
+    margin-top: 8px;
 }
+
+table{
+    width: 100%;
+    margin: 40px auto;
+    border-collapse: collapse;
+    font-size: 16px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+th{
+    padding: 16px;
+    color:#b8d6b8;
+}
+
+td{
+    padding: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.ready{
+    color: #ffffff;
+}
+
+.active{
+    color: #ff9a2f;
+    font-weight: bold;
+}
+
+.done{
+    color: #00ff6a;
+    font-weight: bold;
+}
+
+.buttons{
+    position: fixed;
+    bottom: 40px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+button{
+    border: none;
+    border-radius: 999px;
+    padding: 14px 40px;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.start{
+    background: linear-gradient(135deg, #00ff6a, #1a7f3a);
+    color: white;
+}
+
+.reset{
+    background: rgba(255,255,255,0.15);
+    color: white;
+}
+
+button:hover{
+    transform: scale(1.03);
+    transition: 0.2s;
+}
+
 </style>
+
 </head>
 
 <body>
 
-<h1>Contor Metanii</h1>
+<div class="track-bg">
+    <img src="https://www.atlassport.ro/wp-content/uploads/2025/11/1-1-1.jpg">
+</div>
 
-<button onclick="start()">Start</button>
+<div class="container">
 
-<div id="counter">0</div>
+<div class="timer" id="timer">02:05</div>
+<div class="subtitle" id="currentLap">Tura 1 / 4</div>
 
-<video id="video" playsinline></video>
-<canvas id="canvas"></canvas>
+<table>
+<tr>
+<th>Tură</th>
+<th>Timp tură</th>
+<th>Status</th>
+</tr>
+
+<tbody id="laps">
+<tr><td>01</td><td>02:05</td><td id="s1" class="ready">Pregătită</td></tr>
+<tr><td>02</td><td>02:05</td><td id="s2" class="ready">Pregătită</td></tr>
+<tr><td>03</td><td>02:05</td><td id="s3" class="ready">Pregătită</td></tr>
+<tr><td>04</td><td>02:05</td><td id="s4" class="ready">Pregătită</td></tr>
+</tbody>
+</table>
+
+<div class="buttons">
+<button class="reset" onclick="resetTimer()">Resetare</button>
+<button class="start" onclick="startPause()" id="startBtn">Pornire</button>
+</div>
+
+</div>
 
 <script>
-let counter = 0;
-let state = 0;
 
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+const lapTime = 125;
+let remaining = lapTime;
+let lap = 1;
+let running = false;
+let interval;
 
-function updateCounter() {
-  document.getElementById("counter").innerText = counter;
+function displayTime(sec){
+let m = Math.floor(sec/60);
+let s = sec%60;
+document.getElementById("timer").innerHTML =
+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
 }
 
-function onMetanie() {
-  counter++;
-  updateCounter();
-  console.log("Metanie:", counter);
+function sound(){
+let ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+let osc1 = ctx.createOscillator();
+let gain1 = ctx.createGain();
+
+let osc2 = ctx.createOscillator();
+let gain2 = ctx.createGain();
+
+osc1.type="triangle";
+osc1.frequency.value=650;
+
+osc2.type="sine";
+osc2.frequency.value=1200;
+
+gain1.gain.setValueAtTime(0.0001, ctx.currentTime);
+gain1.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime+0.05);
+gain1.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.35);
+
+gain2.gain.setValueAtTime(0.0001, ctx.currentTime);
+gain2.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime+0.05);
+gain2.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+0.45);
+
+osc1.connect(gain1);
+osc2.connect(gain2);
+gain1.connect(ctx.destination);
+gain2.connect(ctx.destination);
+
+osc1.start();
+osc2.start();
+
+setTimeout(()=>{osc1.stop(); osc2.stop();},500);
 }
 
-function start() {
+function startPause(){
 
-  const pose = new Pose({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-    }
-  });
-
-  pose.setOptions({
-    modelComplexity: 0,
-    smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  pose.onResults(results => {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-
-    if (!results.poseLandmarks) return;
-
-    const lm = results.poseLandmarks;
-
-    const headY = lm[0].y;
-    const shoulderY = lm[11].y;
-    const hipY = lm[23].y;
-
-    // LOGICĂ METANII (4 FAZE)
-    if (state === 0 && headY > shoulderY + 0.05) {
-      state = 1;
-    }
-
-    if (state === 1 && headY > hipY + 0.1) {
-      state = 2;
-    }
-
-    if (state === 2 && headY < hipY) {
-      state = 3;
-    }
-
-    if (state === 3 && headY < shoulderY + 0.02) {
-      state = 0;
-      onMetanie();
-    }
-
-    // desen schelet (opțional)
-    drawConnectors(ctx, lm, POSE_CONNECTIONS, {color: '#0f0'});
-    drawLandmarks(ctx, lm, {color: '#f00', radius: 3});
-  });
-
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await pose.send({image: video});
-    },
-    width: 640,
-    height: 480
-  });
-
-  camera.start();
+if(running){
+clearInterval(interval);
+running=false;
+document.getElementById("startBtn").innerHTML="Reluare";
+return;
 }
+
+running=true;
+document.getElementById("startBtn").innerHTML="Pauză";
+
+/* 🔥 FIX IMPORTANT: activez imediat tura 1 */
+document.getElementById("s"+lap).className = "active";
+document.getElementById("s"+lap).innerHTML = "În desfășurare";
+
+interval=setInterval(()=>{
+
+remaining--;
+displayTime(remaining);
+
+if(remaining<=0){
+
+sound();
+
+/* FINAL corect */
+document.getElementById("s"+lap).className = "done";
+document.getElementById("s"+lap).innerHTML = "Finalizată ✅️🏃";
+
+if(lap>=4){
+clearInterval(interval);
+running=false;
+document.getElementById("startBtn").innerHTML="Finalizat";
+document.getElementById("currentLap").innerHTML="Gata";
+return;
+}
+
+lap++;
+document.getElementById("currentLap").innerHTML="Tura "+lap+" / 4";
+
+document.getElementById("s"+lap).className = "active";
+document.getElementById("s"+lap).innerHTML = "În desfășurare";
+
+remaining = lapTime;
+displayTime(remaining);
+}
+
+},1000);
+
+}
+
+function resetTimer(){
+clearInterval(interval);
+running=false;
+lap=1;
+remaining=lapTime;
+
+displayTime(remaining);
+
+document.getElementById("currentLap").innerHTML="Tura 1 / 4";
+document.getElementById("startBtn").innerHTML="Pornire";
+
+for(let i=1;i<=4;i++){
+document.getElementById("s"+i).className="ready";
+document.getElementById("s"+i).innerHTML="Pregătită";
+}
+}
+
+displayTime(remaining);
+
 </script>
 
 </body>
